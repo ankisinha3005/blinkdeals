@@ -5,7 +5,7 @@ This document outlines the complete API requirements for the BlinkDeals flash sa
 
 ## Base URL
 ```
-Production: https://api.blinkdeals.com
+Production: https://api.blinkdeals.in
 Development: http://localhost:3001
 ```
 
