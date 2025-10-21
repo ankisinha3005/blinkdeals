@@ -1,11 +1,15 @@
 // ==================== AUTHENTICATION SERVICE ====================
 // This file contains all authentication-related API calls
-// Replace the mock implementations with actual API endpoints
+// Integrated with Firebase Authentication for mobile OTP
 // ==============================================================
+
+import { initializeRecaptcha, sendOTP as firebaseSendOTP, verifyOTP as firebaseVerifyOTP, auth, testFirebaseConnection, enableTestingMode, checkFirebaseConfig } from '../firebase';
+import { User as FirebaseUser } from 'firebase/auth';
 
 interface SendOTPResponse {
   success: boolean;
   message: string;
+  verificationId?: string;
 }
 
 interface VerifyOTPResponse {
@@ -18,6 +22,7 @@ interface VerifyOTPResponse {
     phone: string;
   };
   token?: string;
+  firebaseUser?: FirebaseUser;
 }
 
 interface RegisterUserResponse {
@@ -33,105 +38,246 @@ interface RegisterUserResponse {
 
 export const authService = {
   /**
-   * Send OTP to the provided phone number
+   * Send OTP to the provided phone number using Firebase
    * @param phone - 10-digit phone number
-   * @returns Promise with success status
+   * @returns Promise with success status and verification ID
    */
   sendOTP: async (phone: string): Promise<SendOTPResponse> => {
-    // TODO: Replace with actual API call
-    // const response = await fetch('/api/auth/send-otp', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ phone })
-    // });
-    // return response.json();
-
-    // Mock implementation
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          message: 'OTP sent successfully'
-        });
-      }, 1500);
-    });
+    try {
+      // Check Firebase configuration
+      checkFirebaseConfig();
+      
+      // Enable testing mode for development (disables reCAPTCHA)
+      enableTestingMode();
+      
+      // Test Firebase connection first
+      testFirebaseConnection();
+      
+      // Initialize reCAPTCHA if not already done
+      try {
+        initializeRecaptcha();
+      } catch (recaptchaError) {
+        console.warn('reCAPTCHA initialization warning:', recaptchaError);
+        // Continue anyway, Firebase might handle it
+      }
+      
+      // Send OTP using Firebase
+      const result = await firebaseSendOTP(phone);
+      
+      return {
+        success: true,
+        message: 'OTP sent successfully',
+        verificationId: result.verificationId
+      };
+    } catch (error: any) {
+      console.error('Firebase sendOTP error:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // Handle specific Firebase errors
+      if (error.code === 'auth/too-many-requests') {
+        return {
+          success: false,
+          message: 'Too many requests. Please try again later.'
+        };
+      } else if (error.code === 'auth/invalid-phone-number') {
+        return {
+          success: false,
+          message: 'Invalid phone number format.'
+        };
+      } else if (error.code === 'auth/missing-recaptcha-token') {
+        return {
+          success: false,
+          message: 'reCAPTCHA verification required. Please try again.'
+        };
+      } else if (error.code === 'auth/operation-not-allowed') {
+        return {
+          success: false,
+          message: 'Phone authentication is not enabled. Please contact support.'
+        };
+      } else if (error.code === 'auth/quota-exceeded') {
+        return {
+          success: false,
+          message: 'SMS quota exceeded. Please try again later.'
+        };
+      } else {
+        return {
+          success: false,
+          message: `Failed to send OTP: ${error.message || 'Unknown error'}`
+        };
+      }
+    }
   },
 
   /**
-   * Verify the OTP and check if user exists
-   * @param phone - 10-digit phone number
+   * Verify the OTP using Firebase
+   * @param verificationId - Verification ID from sendOTP
    * @param otp - 6-digit OTP code
-   * @returns Promise with user data or new user flag
+   * @returns Promise with Firebase user data
    */
-  verifyOTP: async (phone: string, otp: string): Promise<VerifyOTPResponse> => {
-    // TODO: Replace with actual API call
-    // const response = await fetch('/api/auth/verify-otp', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ phone, otp })
-    // });
-    // return response.json();
-
-    // Mock implementation
-    const mockUsers = new Map([
-      ['9876543210', { id: '1', name: 'John Doe', email: 'john@example.com', phone: '9876543210' }],
-      ['9876543211', { id: '2', name: 'Jane Smith', email: 'jane@example.com', phone: '9876543211' }],
-    ]);
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const user = mockUsers.get(phone);
-        
-        if (user) {
-          // Existing user
-          resolve({
-            success: true,
-            isNewUser: false,
-            user: user,
-            token: 'mock-jwt-token-' + Date.now()
-          });
-        } else {
-          // New user
-          resolve({
-            success: true,
-            isNewUser: true
-          });
-        }
-      }, 1000);
-    });
+  verifyOTP: async (verificationId: string, otp: string): Promise<VerifyOTPResponse> => {
+    try {
+      // Verify OTP using Firebase
+      const firebaseUser = await firebaseVerifyOTP(verificationId, otp);
+      
+      // Get user data from Firebase
+      const phoneNumber = firebaseUser.phoneNumber?.replace('+91', '') || '';
+      
+      // Check if user has completed registration before using localStorage
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '{}');
+      const isRegisteredUser = registeredUsers[phoneNumber];
+      
+      console.log('User verification check:', {
+        phoneNumber,
+        isRegisteredUser,
+        hasDisplayName: !!firebaseUser.displayName,
+        uid: firebaseUser.uid
+      });
+      
+      if (isRegisteredUser) {
+        // Existing registered user - return their stored data
+        return {
+          success: true,
+          isNewUser: false,
+          user: {
+            id: firebaseUser.uid,
+            name: isRegisteredUser.name || firebaseUser.displayName || '',
+            email: isRegisteredUser.email || firebaseUser.email || undefined,
+            phone: phoneNumber
+          },
+          token: await firebaseUser.getIdToken(),
+          firebaseUser: firebaseUser
+        };
+      } else {
+        // New user - needs to complete registration
+        return {
+          success: true,
+          isNewUser: true,
+          firebaseUser: firebaseUser
+        };
+      }
+    } catch (error: any) {
+      console.error('Firebase verifyOTP error:', error);
+      
+      // Handle specific Firebase errors
+      if (error.code === 'auth/invalid-verification-code') {
+        return {
+          success: false,
+          isNewUser: false,
+          message: 'Invalid OTP code. Please try again.'
+        };
+      } else if (error.code === 'auth/code-expired') {
+        return {
+          success: false,
+          isNewUser: false,
+          message: 'OTP code has expired. Please request a new one.'
+        };
+      } else {
+        return {
+          success: false,
+          isNewUser: false,
+          message: 'OTP verification failed. Please try again.'
+        };
+      }
+    }
   },
 
   /**
-   * Register a new user
-   * @param phone - 10-digit phone number
+   * Register a new user by updating Firebase user profile
+   * @param firebaseUser - Firebase user object from verifyOTP
    * @param name - User's full name
    * @param email - User's email (optional)
    * @returns Promise with user data and authentication token
    */
-  register: async (phone: string, name: string, email?: string): Promise<RegisterUserResponse> => {
-    // TODO: Replace with actual API call
-    // const response = await fetch('/api/auth/register', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ phone, name, email })
-    // });
-    // return response.json();
+  register: async (firebaseUser: FirebaseUser, name: string, email?: string): Promise<RegisterUserResponse> => {
+    try {
+      console.log('Registering user:', {
+        uid: firebaseUser.uid,
+        phoneNumber: firebaseUser.phoneNumber,
+        currentEmail: firebaseUser.email,
+        newEmail: email,
+        displayName: firebaseUser.displayName,
+        userType: typeof firebaseUser,
+        hasUpdateProfile: typeof firebaseUser.updateProfile
+      });
 
-    // Mock implementation
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          user: {
-            id: 'new-user-' + Date.now(),
-            name,
-            email,
-            phone
-          },
-          token: 'mock-jwt-token-' + Date.now()
-        });
-      }, 1000);
-    });
+      // Check if firebaseUser is valid
+      if (!firebaseUser || !firebaseUser.uid) {
+        throw new Error('Invalid Firebase user object');
+      }
+
+      // Try to update profile, but don't fail if it's not available
+      try {
+        if (typeof firebaseUser.updateProfile === 'function') {
+          await firebaseUser.updateProfile({
+            displayName: name,
+            photoURL: undefined
+          });
+          console.log('Profile updated successfully');
+        } else {
+          console.warn('updateProfile method not available, skipping profile update');
+        }
+      } catch (profileError) {
+        console.warn('Profile update failed, continuing without it:', profileError);
+        // Continue without updating profile - this is not critical
+      }
+
+      // Note: For phone-authenticated users, we cannot update email directly
+      // The email will be stored in your backend/database instead
+      // Firebase phone auth users don't have email/password credentials
+
+      // Get updated token
+      const token = await firebaseUser.getIdToken();
+      
+      const phoneNumber = firebaseUser.phoneNumber?.replace('+91', '') || '';
+      
+      console.log('Registration completed successfully');
+      
+      // Store user data in localStorage to track completed registrations
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '{}');
+      registeredUsers[phoneNumber] = {
+        name: name,
+        email: email || undefined,
+        phone: phoneNumber,
+        uid: firebaseUser.uid,
+        registeredAt: new Date().toISOString()
+      };
+      localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+      
+      console.log('User data stored in localStorage');
+      
+      return {
+        success: true,
+        user: {
+          id: firebaseUser.uid,
+          name: name,
+          email: email || undefined, // Store email separately, not in Firebase profile
+          phone: phoneNumber
+        },
+        token: token
+      };
+    } catch (error: any) {
+      console.error('Firebase register error:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // Handle specific Firebase errors
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('Email is already in use by another account.');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Invalid email address.');
+      } else if (error.code === 'auth/requires-recent-login') {
+        throw new Error('Please sign in again to update your profile.');
+      } else {
+        throw new Error(`Registration failed: ${error.message || 'Unknown error'}`);
+      }
+    }
   },
 
   /**
@@ -157,5 +303,24 @@ export const authService = {
    */
   clearToken: () => {
     localStorage.removeItem('auth_token');
+  },
+
+  /**
+   * Clear all stored user data (for testing/logout)
+   */
+  clearAllUserData: () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('registeredUsers');
+    console.log('All user data cleared');
+  },
+
+  /**
+   * Check if a phone number is already registered
+   * @param phoneNumber - Phone number to check
+   * @returns boolean indicating if user is registered
+   */
+  isUserRegistered: (phoneNumber: string): boolean => {
+    const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '{}');
+    return !!registeredUsers[phoneNumber];
   }
 };

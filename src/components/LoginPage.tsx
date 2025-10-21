@@ -19,7 +19,9 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [verificationId, setVerificationId] = useState('');
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [isReturningUser, setIsReturningUser] = useState(false); // Track if user is returning
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
 
@@ -40,20 +42,14 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
     setIsLoading(true);
     
     try {
-      // API call to send OTP
+      // Send OTP using Firebase
       const response = await authService.sendOTP(phoneNumber.replace(/\s/g, ''));
       
-      if (response.success) {
-        // For demo purposes, generate and show OTP
-        const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOtp(mockOtp);
+      if (response.success && response.verificationId) {
+        setVerificationId(response.verificationId);
         setStep('otp');
-        
-        // In production, remove this alert - OTP will be sent via SMS
-        console.log(`OTP sent to ${phoneNumber}: ${mockOtp}`);
-        alert(`Demo OTP sent! Use this code: ${mockOtp}`);
       } else {
-        setError('Failed to send OTP. Please try again.');
+        setError(response.message || 'Failed to send OTP. Please try again.');
       }
     } catch (error) {
       setError('Something went wrong. Please try again.');
@@ -71,21 +67,21 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
       return;
     }
 
-    // Validate OTP locally for demo (remove in production)
-    if (otp !== generatedOtp) {
-      setError('Invalid OTP. Please try again.');
+    if (!verificationId) {
+      setError('Verification session expired. Please request OTP again.');
       return;
     }
 
     setIsLoading(true);
     
     try {
-      // API call to verify OTP
-      const response = await authService.verifyOTP(phoneNumber.replace(/\s/g, ''), otp);
+      // Verify OTP using Firebase
+      const response = await authService.verifyOTP(verificationId, otp);
       
       if (response.success) {
         if (response.isNewUser) {
-          // New user - show registration form
+          // New user - store Firebase user and show registration form
+          setFirebaseUser(response.firebaseUser);
           setStep('register');
         } else {
           // Existing user - store token and show success
@@ -95,6 +91,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
           
           setName(response.user?.name || '');
           setEmail(response.user?.email || '');
+          setIsReturningUser(true); // Mark as returning user
           setStep('success');
           
           // Redirect to homepage after 3 seconds
@@ -109,7 +106,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
           }, 3000);
         }
       } else {
-        setError('OTP verification failed. Please try again.');
+        setError(response.message || 'OTP verification failed. Please try again.');
       }
     } catch (error) {
       setError('Something went wrong. Please try again.');
@@ -132,15 +129,16 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
       return;
     }
 
+    if (!firebaseUser) {
+      setError('Authentication session expired. Please try again.');
+      return;
+    }
+
     setIsLoading(true);
     
     try {
-      // API call to register user
-      const response = await authService.register(
-        phoneNumber.replace(/\s/g, ''),
-        name,
-        email || undefined
-      );
+      // Register user using Firebase
+      const response = await authService.register(firebaseUser, name, email || undefined);
       
       if (response.success) {
         // Store authentication token
@@ -162,33 +160,43 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
       } else {
         setError('Registration failed. Please try again.');
       }
-    } catch (error) {
-      setError('Something went wrong. Please try again.');
+    } catch (error: any) {
+      setError(error.message || 'Something went wrong. Please try again.');
       console.error('Register error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResendOTP = () => {
+  const handleResendOTP = async () => {
     setError('');
     setOtp('');
     setIsLoading(true);
     
-    // Simulate OTP resend
-    setTimeout(() => {
-      const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(mockOtp);
+    try {
+      // Resend OTP using Firebase
+      const response = await authService.sendOTP(phoneNumber.replace(/\s/g, ''));
+      
+      if (response.success && response.verificationId) {
+        setVerificationId(response.verificationId);
+      } else {
+        setError(response.message || 'Failed to resend OTP. Please try again.');
+      }
+    } catch (error) {
+      setError('Something went wrong. Please try again.');
+      console.error('Resend OTP error:', error);
+    } finally {
       setIsLoading(false);
-      console.log(`OTP resent to ${phoneNumber}: ${mockOtp}`);
-      alert(`Demo OTP resent! Use this code: ${mockOtp}`);
-    }, 1500);
+    }
   };
 
   const handleChangeNumber = () => {
     setStep('phone');
     setOtp('');
     setError('');
+    setVerificationId('');
+    setFirebaseUser(null);
+    setIsReturningUser(false);
   };
 
   return (
@@ -395,9 +403,9 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
 
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 text-sm">
                 <p className="text-center text-gray-700">
-                  <span className="block mb-1 text-lg">💡</span>
-                  <span className="block">Demo Mode Active</span>
-                  <span className="text-xs text-gray-600">Check alert popup for the OTP code</span>
+                  <span className="block mb-1 text-lg">📱</span>
+                  <span className="block">OTP Sent via SMS</span>
+                  <span className="text-xs text-gray-600">Check your phone for the verification code</span>
                 </p>
               </div>
             </div>
@@ -573,10 +581,10 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
                   transition={{ delay: 0.5, duration: 0.5 }}
                 >
                   <h2 className={`text-gray-900 mb-3 ${GRADIENTS.primary} bg-clip-text text-transparent`}>
-                    Welcome, {name}! 🎉
+                    {isReturningUser ? 'Welcome back, ' : 'Welcome, '}{name}! {isReturningUser ? '👋' : '🎉'}
                   </h2>
                   <p className="text-gray-600 mb-2">
-                    Your account has been created successfully
+                    {isReturningUser ? 'You\'re logged in successfully' : 'Your account has been created successfully'}
                   </p>
                   <p className="text-sm text-gray-500">
                     Redirecting you to homepage...
