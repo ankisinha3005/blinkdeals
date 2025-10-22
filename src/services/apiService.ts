@@ -3,9 +3,11 @@
 // Handles communication with the BlinkDeals backend server
 // =====================================================
 
+import { authService } from './authService';
+
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://your-backend-domain.com' 
-  : 'http://localhost:3001';
+  : 'http://localhost:3010';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -132,10 +134,21 @@ class ApiService {
    * Make HTTP request with error handling
    */
   private async makeRequest<T>(
-    endpoint: string, 
+    endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
+      // Check if token is expired before making request
+      if (authService.isTokenExpired()) {
+        console.log('Token expired, logging out user');
+        authService.logout();
+        return {
+          success: false,
+          message: 'Session expired. Please login again.',
+          code: 'TOKEN_EXPIRED'
+        };
+      }
+
       const url = `${this.baseURL}${endpoint}`;
       const response = await fetch(url, {
         ...options,
@@ -148,6 +161,16 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
+        // Handle 401 responses (unauthorized)
+        if (response.status === 401) {
+          console.log('Received 401 response, logging out user');
+          authService.logout();
+          return {
+            success: false,
+            message: 'Session expired. Please login again.',
+            code: 'UNAUTHORIZED'
+          };
+        }
         throw new Error(data.message || `HTTP ${response.status}`);
       }
 
@@ -168,14 +191,50 @@ class ApiService {
    * Get all products
    */
   async getProducts(): Promise<ApiResponse<Product[]>> {
-    return this.makeRequest<Product[]>('/api/products');
+    const response = await this.makeRequest<any[]>('/api/products');
+    
+    if (response.success && response.data) {
+      // Transform snake_case to camelCase for variants
+      const transformedData = response.data.map(product => ({
+        ...product,
+        variants: product.variants?.map((variant: any) => ({
+          ...variant,
+          originalPrice: variant.original_price || variant.originalPrice
+        }))
+      }));
+      
+      return {
+        ...response,
+        data: transformedData
+      };
+    }
+    
+    return response;
   }
 
   /**
    * Get product by ID
    */
   async getProduct(id: number): Promise<ApiResponse<Product>> {
-    return this.makeRequest<Product>(`/api/products/${id}`);
+    const response = await this.makeRequest<any>(`/api/products/${id}`);
+    
+    if (response.success && response.data) {
+      // Transform snake_case to camelCase for variants
+      const transformedData = {
+        ...response.data,
+        variants: response.data.variants?.map((variant: any) => ({
+          ...variant,
+          originalPrice: variant.original_price || variant.originalPrice
+        }))
+      };
+      
+      return {
+        ...response,
+        data: transformedData
+      };
+    }
+    
+    return response;
   }
 
   // ==================== USER API ====================

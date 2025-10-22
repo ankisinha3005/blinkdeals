@@ -20,6 +20,7 @@ import { WebsiteWireframe } from './components/WebsiteWireframe';
 import { SellerPresentation } from './components/SellerPresentation';
 import { SellerPitchPage } from './components/SellerPitchPage';
 import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
 import { products } from './data/products';
 import { Product, ProductVariant, Page, UserData } from './types';
 import { FileText, Presentation, FileDown } from 'lucide-react';
@@ -57,6 +58,53 @@ export default function App() {
       }
     }
   }, []);
+
+  // Listen for logout events (token expiration, 401 responses, etc.)
+  useEffect(() => {
+    const handleLogout = () => {
+      console.log('Logout event received, updating UI state');
+      setIsLoggedIn(false);
+      setUserData(null);
+      setCurrentPage('home');
+      // Clear any stored login state
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userData');
+      
+      // Show notification to user
+      toast.error('Session expired', {
+        description: 'Your session has expired. Please login again.',
+        duration: 5000,
+      });
+    };
+
+    window.addEventListener('userLogout', handleLogout);
+    
+    return () => {
+      window.removeEventListener('userLogout', handleLogout);
+    };
+  }, []);
+
+  // Periodic token validation (check every 5 minutes)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const validateToken = () => {
+      if (authService.isTokenExpired()) {
+        console.log('Token expired during periodic check, logging out');
+        authService.logout();
+      }
+    };
+
+    // Check immediately
+    validateToken();
+
+    // Set up interval to check every 5 minutes
+    const interval = setInterval(validateToken, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isLoggedIn]);
 
   // Fetch products from backend
   useEffect(() => {
@@ -137,10 +185,9 @@ export default function App() {
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserData(null);
-    authService.clearToken();
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userData');
     setCurrentPage('home');
+    // Use authService.logout() to ensure consistent logout behavior
+    authService.logout();
   };
 
   const handleProfile = () => {
