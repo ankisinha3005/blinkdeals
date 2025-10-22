@@ -23,6 +23,7 @@ interface VerifyOTPResponse {
   };
   token?: string;
   firebaseUser?: FirebaseUser;
+  message?: string; // Added for error messages
 }
 
 interface RegisterUserResponse {
@@ -201,7 +202,7 @@ export const authService = {
         newEmail: email,
         displayName: firebaseUser.displayName,
         userType: typeof firebaseUser,
-        hasUpdateProfile: typeof firebaseUser.updateProfile
+        hasUpdateProfile: typeof (firebaseUser as any).updateProfile
       });
 
       // Check if firebaseUser is valid
@@ -211,8 +212,8 @@ export const authService = {
 
       // Try to update profile, but don't fail if it's not available
       try {
-        if (typeof firebaseUser.updateProfile === 'function') {
-          await firebaseUser.updateProfile({
+        if (typeof (firebaseUser as any).updateProfile === 'function') {
+          await (firebaseUser as any).updateProfile({
             displayName: name,
             photoURL: undefined
           });
@@ -318,5 +319,42 @@ export const authService = {
   isUserRegistered: (phoneNumber: string): boolean => {
     const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '{}');
     return !!registeredUsers[phoneNumber];
+  },
+
+  /**
+   * Check if the current token is expired
+   * @returns boolean indicating if token is expired
+   */
+  isTokenExpired: (): boolean => {
+    const token = authService.getToken();
+    if (!token) return true;
+
+    try {
+      // Decode JWT token to check expiration
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Math.floor(Date.now() / 1000);
+      return payload.exp < currentTime;
+    } catch (error) {
+      console.error('Error checking token expiration:', error);
+      return true; // If we can't decode, consider it expired
+    }
+  },
+
+  /**
+   * Check if user is authenticated and token is valid
+   * @returns boolean indicating if user is authenticated
+   */
+  isAuthenticated: (): boolean => {
+    const token = authService.getToken();
+    return !!token && !authService.isTokenExpired();
+  },
+
+  /**
+   * Logout user and clear all data
+   */
+  logout: () => {
+    authService.clearAllUserData();
+    // Dispatch custom event for logout
+    window.dispatchEvent(new CustomEvent('userLogout'));
   }
 };
