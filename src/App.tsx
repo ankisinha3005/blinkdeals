@@ -24,6 +24,7 @@ import { products } from './data/products';
 import { Product, ProductVariant, Page, UserData } from './types';
 import { FileText, Presentation, FileDown } from 'lucide-react';
 import { authService } from './services/authService';
+import { apiService } from './services/apiService';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -35,6 +36,9 @@ export default function App() {
   const [showPitchPage, setShowPitchPage] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
 
   // Check login state on app load
   useEffect(() => {
@@ -52,6 +56,37 @@ export default function App() {
         localStorage.removeItem('userData');
       }
     }
+  }, []);
+
+  // Fetch products from backend
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setIsLoadingProducts(true);
+        setProductsError(null);
+        
+        const response = await apiService.getProducts();
+        
+        if (response.success && response.data) {
+          setProducts(response.data);
+        } else {
+          // Fallback to local products if backend fails
+          console.warn('Backend products failed, using local products:', response.message);
+          const { products: localProducts } = await import('./data/products');
+          setProducts(localProducts);
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        // Fallback to local products
+        const { products: localProducts } = await import('./data/products');
+        setProducts(localProducts);
+        setProductsError('Failed to load products from server');
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    };
+
+    fetchProducts();
   }, []);
 
   // Set sale times based on test mode
@@ -288,6 +323,8 @@ export default function App() {
           onLogout={handleLogout}
           isLoggedIn={isLoggedIn}
           userName={userData?.name}
+          isLoadingProducts={isLoadingProducts}
+          productsError={productsError}
         />
       )}
 

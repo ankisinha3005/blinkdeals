@@ -6,6 +6,8 @@ import { Footer } from './Footer';
 import { GRADIENTS, COLORS, APP_NAME } from '../constants';
 import { motion } from 'motion/react';
 import { Separator } from './ui/separator';
+import { useState, useEffect } from 'react';
+import { apiService } from '../services/apiService';
 
 interface PressMediaPageProps {
   onBack: () => void;
@@ -85,6 +87,27 @@ export function PressMediaPage({
   isLoggedIn,
   userName,
 }: PressMediaPageProps) {
+  const [releases, setReleases] = useState<PressRelease[]>(pressReleases);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchReleases = async () => {
+      try {
+        setLoading(true);
+        const response = await apiService.getPressReleases();
+        if (response.success && response.data) {
+          setReleases(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching press releases:', error);
+        // Keep hardcoded data as fallback
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReleases();
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col">
       <Header
@@ -165,8 +188,8 @@ export function PressMediaPage({
             className="mb-8"
           >
             <h2 className="text-gray-900 mb-6">Latest Press Releases</h2>
-            <div className="space-y-4">
-              {pressReleases.map((release, index) => (
+             <div className="space-y-4">
+               {releases.map((release, index) => (
                 <motion.div
                   key={release.id}
                   initial={{ opacity: 0, x: -20 }}

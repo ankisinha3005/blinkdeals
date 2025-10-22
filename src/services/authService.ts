@@ -186,7 +186,7 @@ export const authService = {
   },
 
   /**
-   * Register a new user by updating Firebase user profile
+   * Register a new user by updating Firebase user profile and backend
    * @param firebaseUser - Firebase user object from verifyOTP
    * @param name - User's full name
    * @param email - User's email (optional)
@@ -225,11 +225,7 @@ export const authService = {
         // Continue without updating profile - this is not critical
       }
 
-      // Note: For phone-authenticated users, we cannot update email directly
-      // The email will be stored in your backend/database instead
-      // Firebase phone auth users don't have email/password credentials
-
-      // Get updated token
+      // Get Firebase token
       const token = await firebaseUser.getIdToken();
       
       const phoneNumber = firebaseUser.phoneNumber?.replace('+91', '') || '';

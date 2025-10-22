@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Package, Star, Calendar, CheckCircle, XCircle, MessageSquare, Ruler, Weight, Package2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -7,6 +7,7 @@ import { Textarea } from './ui/textarea';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { formatCurrency, COLORS, GRADIENTS } from '../constants';
 import { motion } from 'motion/react';
+import { apiService } from '../services/apiService';
 
 interface Order {
   id: string;
@@ -122,9 +123,30 @@ const mockOrders: Order[] = [
 ];
 
 export function OrdersPage({ onBack }: OrdersPageProps) {
+  const [orders, setOrders] = useState<Order[]>(mockOrders);
+  const [loading, setLoading] = useState(false);
   const [reviewingOrderId, setReviewingOrderId] = useState<string | null>(null);
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState(0);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true);
+        const response = await apiService.getUserOrders();
+        if (response.success && response.data) {
+          setOrders(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching orders:', error);
+        // Keep hardcoded data as fallback
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, []);
 
   const handleSubmitReview = (orderId: string) => {
     // TODO: Submit review to backend
@@ -198,7 +220,7 @@ export function OrdersPage({ onBack }: OrdersPageProps) {
 
       {/* Orders Content */}
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {mockOrders.length === 0 ? (
+        {orders.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -210,7 +232,7 @@ export function OrdersPage({ onBack }: OrdersPageProps) {
           </motion.div>
         ) : (
           <div className="space-y-4">
-            {mockOrders.map((order, index) => (
+            {orders.map((order, index) => (
               <motion.div
                 key={order.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -388,10 +410,10 @@ export function OrdersPage({ onBack }: OrdersPageProps) {
         )}
 
         {/* Summary */}
-        {mockOrders.length > 0 && (
+        {orders.length > 0 && (
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-500">
-              Showing {mockOrders.length} order{mockOrders.length !== 1 ? 's' : ''}
+              Showing {orders.length} order{orders.length !== 1 ? 's' : ''}
             </p>
           </div>
         )}

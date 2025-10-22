@@ -5,6 +5,8 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import { GRADIENTS, COLORS, APP_NAME } from '../constants';
 import { motion } from 'motion/react';
+import { useState, useEffect } from 'react';
+import { apiService } from '../services/apiService';
 
 interface BlogPageProps {
   onBack: () => void;
@@ -128,6 +130,27 @@ export function BlogPage({
   isLoggedIn,
   userName,
 }: BlogPageProps) {
+  const [posts, setPosts] = useState<BlogPost[]>(blogPosts);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        setLoading(true);
+        const response = await apiService.getBlogPosts();
+        if (response.success && response.data) {
+          setPosts(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching blog posts:', error);
+        // Keep hardcoded data as fallback
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPosts();
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col">
       <Header
@@ -164,8 +187,8 @@ export function BlogPage({
             </p>
           </motion.div>
 
-          {/* Featured Post */}
-          {blogPosts.length > 0 && (
+           {/* Featured Post */}
+           {posts.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -173,40 +196,40 @@ export function BlogPage({
               className="bg-white rounded-3xl shadow-xl overflow-hidden mb-12 cursor-pointer group"
             >
               <div className="grid grid-cols-1 lg:grid-cols-2">
-                <div className="relative h-64 lg:h-auto overflow-hidden">
-                  <img
-                    src={blogPosts[0].imageUrl}
-                    alt={blogPosts[0].title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className={`absolute top-4 left-4`}>
-                    <Badge className={`${GRADIENTS.primary} text-white`}>Featured</Badge>
-                  </div>
-                </div>
-                <div className="p-8 lg:p-12 flex flex-col justify-center">
-                  <Badge className="w-fit mb-4" variant="secondary">
-                    {blogPosts[0].category}
-                  </Badge>
-                  <h2 className={`text-gray-900 mb-4 group-hover:text-${COLORS.primary} transition-colors`}>
-                    {blogPosts[0].title}
-                  </h2>
-                  <p className="text-gray-600 mb-6 leading-relaxed">
-                    {blogPosts[0].excerpt}
-                  </p>
-                  <div className="flex items-center gap-6 text-gray-500 text-sm mb-6">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      <span>{blogPosts[0].author}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      <span>{blogPosts[0].date}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <span>{blogPosts[0].readTime}</span>
-                    </div>
-                  </div>
+                 <div className="relative h-64 lg:h-auto overflow-hidden">
+                   <img
+                     src={posts[0].imageUrl}
+                     alt={posts[0].title}
+                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                   />
+                   <div className={`absolute top-4 left-4`}>
+                     <Badge className={`${GRADIENTS.primary} text-white`}>Featured</Badge>
+                   </div>
+                 </div>
+                 <div className="p-8 lg:p-12 flex flex-col justify-center">
+                   <Badge className="w-fit mb-4" variant="secondary">
+                     {posts[0].category}
+                   </Badge>
+                   <h2 className={`text-gray-900 mb-4 group-hover:text-${COLORS.primary} transition-colors`}>
+                     {posts[0].title}
+                   </h2>
+                   <p className="text-gray-600 mb-6 leading-relaxed">
+                     {posts[0].excerpt}
+                   </p>
+                   <div className="flex items-center gap-6 text-gray-500 text-sm mb-6">
+                     <div className="flex items-center gap-2">
+                       <User className="w-4 h-4" />
+                       <span>{posts[0].author}</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <Calendar className="w-4 h-4" />
+                       <span>{posts[0].date}</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <Clock className="w-4 h-4" />
+                       <span>{posts[0].readTime}</span>
+                     </div>
+                   </div>
                   <Button className={`${GRADIENTS.primary} ${GRADIENTS.primaryHover} w-fit`}>
                     Read More
                   </Button>
@@ -222,7 +245,7 @@ export function BlogPage({
             transition={{ duration: 0.6, delay: 0.3 }}
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"
           >
-            {blogPosts.slice(1).map((post, index) => (
+             {posts.slice(1).map((post, index) => (
               <motion.article
                 key={post.id}
                 initial={{ opacity: 0, y: 20 }}

@@ -8,6 +8,7 @@ import { GRADIENTS, COLORS, APP_NAME } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Separator } from './ui/separator';
+import { apiService } from '../services/apiService';
 
 interface CareersPageProps {
   onBack: () => void;
@@ -137,15 +138,15 @@ export function CareersPage({
   onLogin, 
   onBecomeSeller, 
   onSupport, 
-  onAbout,
-  onCareers,
-  onPressMedia,
-  onBlog,
-  onTerms,
-  onPrivacy,
-  onCookiePolicy,
-  onDisclaimer,
-  onAccessibility,
+  onAbout, 
+  onCareers, 
+  onPressMedia, 
+  onBlog, 
+  onTerms, 
+  onPrivacy, 
+  onCookiePolicy, 
+  onDisclaimer, 
+  onAccessibility, 
   onProfile, 
   onOrders, 
   onLogout, 
@@ -164,11 +165,19 @@ export function CareersPage({
   const loadJobOpenings = async () => {
     setIsLoading(true);
     try {
-      const jobs = await fetchJobOpenings();
-      setJobOpenings(jobs);
+      const response = await apiService.getJobOpenings();
+      if (response.success && response.data) {
+        setJobOpenings(response.data);
+      } else {
+        // Fallback to hardcoded data if API fails
+        const jobs = await fetchJobOpenings();
+        setJobOpenings(jobs);
+      }
     } catch (error) {
       console.error('Failed to fetch job openings:', error);
-      setJobOpenings([]);
+      // Fallback to hardcoded data if API fails
+      const jobs = await fetchJobOpenings();
+      setJobOpenings(jobs);
     } finally {
       setIsLoading(false);
     }
